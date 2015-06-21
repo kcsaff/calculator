@@ -54,7 +54,7 @@ class Calculator(object):
 
     def calculate(self, expression):
         tokens = self.tokenize(expression)
-        return self._eval(tokens)
+        return self._eval(tokens)[0]
 
     def __call__(self, expression):
         return self.calculate(expression)
@@ -70,15 +70,19 @@ class Calculator(object):
         else:
             raise ValueError('Could not interpret %r' % token)
 
-    def _eval(self, tokens, stop=(lambda X: not X), precedence=0):
+    def _eval(self, tokens, stop=(lambda X: not X), precedence=0, valuecount=1):
+        values = list()
         # Value
         token = tokens.get_token()
         if stop(token):
+            tokens.push_token(token)
+            if len(values) == valuecount:
+                return values
             raise ValueError('Missing expected value {}'.format(token))
-        elif (token, 0) in self.operators:
-            value = self.operators[token, 0].calculate(self._eval, tokens, stop)
+        elif (token, len(values)) in self.operators:
+            values = [self.operators[token, len(values)].calculate(self._eval, tokens, stop, *values)]
         else:
-            value = self._interpret(token)
+            values = [self._interpret(token)]
 
         # Operators
         while True:
@@ -87,11 +91,13 @@ class Calculator(object):
             token = tokens.get_token()
             if stop(token):
                 tokens.push_token(token)
-                return value
-            elif (token, 1) in self.operators:
-                operator = self.operators[token, 1]
-            elif (Operator.ADJACENT, 1) in self.operators:
-                operator = self.operators[Operator.ADJACENT, 1]
+                if len(values) == valuecount:
+                    return values
+                raise ValueError('Missing expected value {}'.format(token))
+            elif (token, len(values)) in self.operators:
+                operator = self.operators[token, len(values)]
+            elif (Operator.ADJACENT, len(values)) in self.operators:
+                operator = self.operators[Operator.ADJACENT, len(values)]
                 tokens.push_token(token)
             else:
                 raise ValueError('Missing expected operator {}'.format(token))
@@ -100,9 +106,9 @@ class Calculator(object):
             if operator.trump <= precedence: #outclassed
                 if operator.token is not Operator.ADJACENT:
                     tokens.push_token(token)
-                return value
+                return values #TODO!
             else:
-                value = operator.calculate(self._eval, tokens, stop, value)
+                values = [operator.calculate(self._eval, tokens, stop, *values)]
 
 
 def _apply_or_mul(left, right):
@@ -141,12 +147,12 @@ class Operator(object):
         if self.precedence is None: #Postfix
             pass
         elif isinstance(self.precedence, str): #group
-            values.append(evaluate(tokens, self.stop))
+            values.extend(evaluate(tokens, self.stop))
             end_token = tokens.get_token()
             if end_token != self.precedence:
                 raise ValueError('Mismatched group: %s...%s' % (self.token, end_token))
         else:
-            values.append(evaluate(tokens, stop, self.precedence))
+            values.extend(evaluate(tokens, stop, self.precedence))
         return self.action(*values)
 
 
