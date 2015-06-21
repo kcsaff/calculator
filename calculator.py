@@ -77,9 +77,7 @@ class Calculator(object):
         if stop(token):
             raise ValueError('Missing expected value')
         elif token in self.groups: #prefix or group
-            group = self.groups[token]
-            value = group.find_value(self._eval, tokens, stop)
-            value = group.action(value)
+            value = self.groups[token].calculate(self._eval, tokens, stop)
         else:
             value = self._interpret(token)
 
@@ -105,8 +103,7 @@ class Calculator(object):
                     tokens.push_token(token)
                 return value
             elif operator.precedence is not None: #infix
-                second_value = operator.find_value(self._eval, tokens, stop)
-                value = operator.action(value, second_value)
+                value = operator.calculate(self._eval, tokens, stop, value)
             else: #postfix
                 value = operator.action(value)
 
@@ -141,15 +138,18 @@ class Operator(object):
         else:
             return False
 
-    def find_value(self, evaluate, tokens, stop):
+    def calculate(self, evaluate, tokens, stop, *values):
+        values = list(values)
+        if self.precedence is None: #Postfix
+            pass
         if isinstance(self.precedence, str): #group
-            value = evaluate(tokens, self.stop)
+            values.append(evaluate(tokens, self.stop))
             end_token = tokens.get_token()
             if end_token != self.precedence:
                 raise ValueError('Mismatched group: %s...%s' % (self.token, end_token))
         else:
-            value = evaluate(tokens, stop, self.precedence)
-        return value
+            values.append(evaluate(tokens, stop, self.precedence))
+        return self.action(*values)
 
 
 _default_operators = [
