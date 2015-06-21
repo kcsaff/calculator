@@ -49,8 +49,7 @@ class Calculator(object):
     def __init__(self, interpreters=None, operators=None, tokenize=shlex.shlex):
         self.interpreters = interpreters or _default_interpreters
         operators = operators or _default_operators
-        self.operators = {O.token: O for O in operators if not O.is_prefix()}
-        self.groups = {O.token: O for O in operators if O.is_prefix()}
+        self.operators = {(O.token, O.precount): O for O in operators}
         self.tokenize = tokenize
 
     def calculate(self, expression):
@@ -75,9 +74,9 @@ class Calculator(object):
         # Value
         token = tokens.get_token()
         if stop(token):
-            raise ValueError('Missing expected value')
-        elif token in self.groups: #prefix or group
-            value = self.groups[token].calculate(self._eval, tokens, stop)
+            raise ValueError('Missing expected value {}'.format(token))
+        elif (token, 0) in self.operators:
+            value = self.operators[token, 0].calculate(self._eval, tokens, stop)
         else:
             value = self._interpret(token)
 
@@ -89,13 +88,13 @@ class Calculator(object):
             if stop(token):
                 tokens.push_token(token)
                 return value
-            elif token in self.operators:
-                operator = self.operators[token]
-            elif Operator.ADJACENT in self.operators:
-                operator = self.operators[Operator.ADJACENT]
+            elif (token, 1) in self.operators:
+                operator = self.operators[token, 1]
+            elif (Operator.ADJACENT, 1) in self.operators:
+                operator = self.operators[Operator.ADJACENT, 1]
                 tokens.push_token(token)
             else:
-                raise ValueError('Missing expected operator')
+                raise ValueError('Missing expected operator {}'.format(token))
 
             # Apply operator
             if operator.trump <= precedence: #outclassed
@@ -127,8 +126,9 @@ class Operator(object):
         self.precedence = precedence
         self.trump = trump
 
-    def is_prefix(self):
-        return self.trump is None
+    @property
+    def precount(self):
+        return 1 if self.trump else 0
 
     def stop(self, token):
         if isinstance(self.precedence, str):
