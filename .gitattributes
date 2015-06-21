@@ -1,0 +1,6 @@
+# Fix line endings for text files cuz we're cross platform like that
+*	text=auto
+*.py	text
+*.txt	text
+*.md	text
+*.cfg	text
