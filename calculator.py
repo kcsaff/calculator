@@ -72,22 +72,7 @@ class Calculator(object):
 
     def _eval(self, tokens, stop=(lambda X: not X), precedence=0, valuecount=1):
         values = list()
-        # Value
-        token = tokens.get_token()
-        if stop(token):
-            tokens.push_token(token)
-            if len(values) == valuecount:
-                return values
-            raise ValueError('Missing expected value {}'.format(token))
-        elif (token, len(values)) in self.operators:
-            values = [self.operators[token, len(values)].calculate(self._eval, tokens, stop, *values)]
-        else:
-            values = [self._interpret(token)]
-
-        # Operators
         while True:
-
-            # Figure operator
             token = tokens.get_token()
             if stop(token):
                 tokens.push_token(token)
@@ -99,16 +84,20 @@ class Calculator(object):
             elif (Operator.ADJACENT, len(values)) in self.operators:
                 operator = self.operators[Operator.ADJACENT, len(values)]
                 tokens.push_token(token)
+            elif not values:
+                values = [self._interpret(token)] # TODO!
+                operator = None
             else:
                 raise ValueError('Missing expected operator {}'.format(token))
 
-            # Apply operator
-            if operator.trump <= precedence: #outclassed
-                if operator.token is not Operator.ADJACENT:
-                    tokens.push_token(token)
-                return values #TODO!
-            else:
-                values = [operator.calculate(self._eval, tokens, stop, *values)]
+            if operator:
+                # Apply operator
+                if operator.trump and operator.trump <= precedence: #outclassed
+                    if operator.token is not Operator.ADJACENT:
+                        tokens.push_token(token)
+                    return values #TODO!
+                else:
+                    values = [operator.calculate(self._eval, tokens, stop, *values)]
 
 
 def _apply_or_mul(left, right):
