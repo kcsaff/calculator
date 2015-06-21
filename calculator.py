@@ -102,10 +102,8 @@ class Calculator(object):
                 if operator.token is not Operator.ADJACENT:
                     tokens.push_token(token)
                 return value
-            elif operator.precedence is not None: #infix
+            else:
                 value = operator.calculate(self._eval, tokens, stop, value)
-            else: #postfix
-                value = operator.action(value)
 
 
 def _apply_or_mul(left, right):
@@ -142,7 +140,7 @@ class Operator(object):
         values = list(values)
         if self.precedence is None: #Postfix
             pass
-        if isinstance(self.precedence, str): #group
+        elif isinstance(self.precedence, str): #group
             values.append(evaluate(tokens, self.stop))
             end_token = tokens.get_token()
             if end_token != self.precedence:
