@@ -80,25 +80,26 @@ class Calculator(object):
                 if len(values) == valuecount:
                     return values
                 raise ValueError('Missing expected value {}'.format(token))
-            elif (token, len(values)) in self.operators:
-                operator = self.operators[token, len(values)]
-            elif (Operator.ADJACENT, len(values)) in self.operators:
-                operator = self.operators[Operator.ADJACENT, len(values)]
-                tokens.push_token(token)
+            for argcount in range(len(values), -1, -1):
+                if (token, argcount) in self.operators:
+                    operator = self.operators[token, argcount]
+                    break
+                elif (Operator.ADJACENT, argcount) in self.operators:
+                    operator = self.operators[Operator.ADJACENT, argcount]
+                    break
             else:
-                values = [self._interpret(token)] # TODO!
+                values.append(self._interpret(token)) # TODO!
                 operator = None
 
             if operator:
                 # Apply operator
                 if operator.trump and operator.trump <= precedence: #outclassed
-                    if operator.token is not Operator.ADJACENT:
-                        tokens.push_token(token)
+                    tokens.push_token(token)
                     return values #TODO!
                 else:
-                    values = [operator.calculate(self._eval, tokens, stop, *values)]
-        else:
-            raise ValueError('No operator takes {} values: {}'.format(len(values), values))
+                    values = [operator.calculate(self._eval, tokens, token, stop, *values)]
+
+        raise ValueError('No operator takes {} values: {}'.format(len(values), values))
 
 
 def _apply_or_mul(left, right):
@@ -132,7 +133,9 @@ class Operator(object):
         else:
             return False
 
-    def calculate(self, evaluate, tokens, stop, *values):
+    def calculate(self, evaluate, tokens, token, stop, *values):
+        if self.token is Operator.ADJACENT:
+            tokens.push_token(token)
         values = list(values)
         if self.precedence is None: #Postfix
             pass
