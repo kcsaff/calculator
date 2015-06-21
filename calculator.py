@@ -24,7 +24,7 @@
     15
     >>> c('2^3*4+5*6')
     62
-    
+
     >>> values = dict(a=1, b=2, c=3)
     >>> d = Calculator((int, float, values.get))
     >>> d('a+b*c')
@@ -71,25 +71,14 @@ class Calculator(object):
         else:
             raise ValueError('Could not interpret %r' % token)
 
-    def _eval(self, tokens, stop='', precedence=0):
-
-        def _find_value(operator):
-            if isinstance(operator.precedence, str): #group
-                value = self._eval(tokens, operator.precedence)
-                end_token = tokens.get_token()
-                if end_token != operator.precedence:
-                    raise ValueError('Mismatched group: %s...%s' % (operator.token, end_token))
-            else:
-                value = self._eval(tokens, stop, operator.precedence)
-            return value
-
+    def _eval(self, tokens, stop=(lambda X: not X), precedence=0):
         # Value
         token = tokens.get_token()
-        if token == stop:
+        if stop(token):
             raise ValueError('Missing expected value')
         elif token in self.groups: #prefix or group
             group = self.groups[token]
-            value = _find_value(group)
+            value = group.find_value(self._eval, tokens, stop)
             value = group.action(value)
         else:
             value = self._interpret(token)
@@ -99,7 +88,7 @@ class Calculator(object):
 
             # Figure operator
             token = tokens.get_token()
-            if token == stop:
+            if stop(token):
                 tokens.push_token(token)
                 return value
             elif token in self.operators:
@@ -116,7 +105,7 @@ class Calculator(object):
                     tokens.push_token(token)
                 return value
             elif operator.precedence is not None: #infix
-                second_value = _find_value(operator)
+                second_value = operator.find_value(self._eval, tokens, stop)
                 value = operator.action(value, second_value)
             else: #postfix
                 value = operator.action(value)
@@ -145,6 +134,22 @@ class Operator(object):
 
     def is_prefix(self):
         return self.trump is None
+
+    def stop(self, token):
+        if isinstance(self.precedence, str):
+            return token == self.precedence
+        else:
+            return False
+
+    def find_value(self, evaluate, tokens, stop):
+        if isinstance(self.precedence, str): #group
+            value = evaluate(tokens, self.stop)
+            end_token = tokens.get_token()
+            if end_token != self.precedence:
+                raise ValueError('Mismatched group: %s...%s' % (self.token, end_token))
+        else:
+            value = evaluate(tokens, stop, self.precedence)
+        return value
 
 
 _default_operators = [
