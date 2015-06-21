@@ -50,6 +50,7 @@ class Calculator(object):
         self.interpreters = interpreters or _default_interpreters
         operators = operators or _default_operators
         self.operators = {(O.token, O.precount): O for O in operators}
+        self.max_precount = max(O.precount for O in operators)
         self.tokenize = tokenize
 
     def calculate(self, expression):
@@ -72,7 +73,7 @@ class Calculator(object):
 
     def _eval(self, tokens, stop=(lambda X: not X), precedence=0, valuecount=1):
         values = list()
-        while True:
+        while len(values) <= self.max_precount:
             token = tokens.get_token()
             if stop(token):
                 tokens.push_token(token)
@@ -84,11 +85,9 @@ class Calculator(object):
             elif (Operator.ADJACENT, len(values)) in self.operators:
                 operator = self.operators[Operator.ADJACENT, len(values)]
                 tokens.push_token(token)
-            elif not values:
+            else:
                 values = [self._interpret(token)] # TODO!
                 operator = None
-            else:
-                raise ValueError('Missing expected operator {}'.format(token))
 
             if operator:
                 # Apply operator
@@ -98,6 +97,8 @@ class Calculator(object):
                     return values #TODO!
                 else:
                     values = [operator.calculate(self._eval, tokens, stop, *values)]
+        else:
+            raise ValueError('No operator takes {} values: {}'.format(len(values), values))
 
 
 def _apply_or_mul(left, right):
