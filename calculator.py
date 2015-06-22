@@ -92,8 +92,8 @@ class Calculator(object):
             if operator.trump < precedence: #outclassed
                 break
             else:
-                args = values[-argcount:]
-                values = values[:-argcount] + [operator.calculate(self._eval, tokens, token, stop, *args)]
+                args = values[len(values)-operator.precount:]
+                values = values[:len(values)-operator.precount] + [operator.calculate(self._eval, tokens, token, stop, *args)]
 
         tokens.push_token(token)
         if len(values) == valuecount:
