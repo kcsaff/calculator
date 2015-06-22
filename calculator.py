@@ -117,61 +117,57 @@ _default_interpreters = (
 class Operator(object):
     ADJACENT = object()
 
-    def __init__(self, token, action, precedence, trump=None):
-        self.token = token
+    def __init__(self, trump, precount, token, *parts):
+        self.trump, self.precount, self.token = trump, precount, token
+        self.parts = parts
+        self.action = (lambda X: X)
+
+    def __call__(self, action):
         self.action = action
-        self.precedence = precedence
-        self.trump = trump
+        return self
 
-    @property
-    def precount(self):
-        return 1 if self.trump else 0
-
-    def stop(self, token):
-        if isinstance(self.precedence, str):
-            return token == self.precedence
-        else:
-            return False
-
-    def calculate(self, evaluate, tokens, token, stop, *values):
+    def calculate(self, evaluate, tokens, token, stop, *args):
         if self.token is Operator.ADJACENT:
             tokens.push_token(token)
-        values = list(values)
-        if self.precedence is None: #Postfix
-            pass
-        elif isinstance(self.precedence, str): #group
-            values.extend(evaluate(tokens, self.stop))
-            end_token = tokens.get_token()
-            if end_token != self.precedence:
-                raise ValueError('Mismatched group: %s...%s' % (self.token, end_token))
-        else:
-            values.extend(evaluate(tokens, stop, self.precedence))
-        return self.action(*values)
+        args = list(args)
+        for i in range(0, len(self.parts), 2):
+            argcount = self.parts[i]
+            precedence = self.parts[i+1] if len(self.parts) > i+1 else None
+            if precedence is None: #Postfix
+                pass
+            elif isinstance(precedence, str): #group
+                args.extend(evaluate(tokens, (lambda X: X == precedence), 0, argcount))
+                end_token = tokens.get_token()
+                if end_token != precedence:
+                    raise ValueError('Mismatched group: %s...%s != %s' % (self.token, end_token, precedence))
+            else:
+                args.extend(evaluate(tokens, stop, precedence, argcount))
+        return self.action(*args)
 
 
 _default_operators = [
-    Operator('=', (lambda L,R: L.assign(R)), 500, 510),
-    Operator('==', operator.eq, 1100, 1090),
-    Operator('<=', operator.le, 1100, 1090),
-    Operator('>=', operator.ge, 1100, 1090),
-    Operator('!=', operator.ne, 1100, 1090),
-    Operator('<', operator.lt, 1100, 1090),
-    Operator('>', operator.gt, 1100, 1090),
-    Operator('+', operator.add, 2100, 2090),
-    Operator('-', operator.sub, 2100, 2090),
-    Operator('*', operator.mul, 2200, 2190),
-    Operator('/', operator.truediv, 2200, 2190),
-    Operator('^', operator.pow, 2300, 2310),
-    Operator(Operator.ADJACENT, _apply_or_mul, 2400, 2390),
+    Operator(510, 1, '=', 1, 500)(lambda L,R: L.assign(R)),
+    Operator(1090, 1, '==', 1, 1100)(operator.eq),
+    Operator(1090, 1, '<=', 1, 1100)(operator.le),
+    Operator(1090, 1, '>=', 1, 1100)(operator.ge),
+    Operator(1090, 1, '!=', 1, 1100)(operator.ne),
+    Operator(1090, 1, '<', 1, 1100)(operator.lt),
+    Operator(1090, 1, '>', 1, 1100)(operator.gt),
+    Operator(2090, 1, '+', 1, 2100)(operator.add),
+    Operator(2090, 1, '-', 1, 2100)(operator.sub),
+    Operator(2190, 1, '*', 1, 2200)(operator.mul),
+    Operator(2190, 1, '/', 1, 2200)(operator.truediv),
+    Operator(2310, 1, '^', 1, 2300)(operator.pow),
+    Operator(2390, 1, Operator.ADJACENT, 1, 2400)(_apply_or_mul),
     # Call-like
-    Operator('[', operator.getitem, ']', 3000),
+    Operator(3000, 1, '[', 1, ']')(operator.getitem),
     # Postfix
-    Operator('%', (lambda x: x * 0.01), None, 2295),
+    Operator(2295, 1, '%')(lambda x: x * 0.01),
     # Prefix
-    Operator('+', operator.pos, 2305, None),
-    Operator('-', operator.neg, 2305, None),
+    Operator(0, 0, '+', 1, 2305)(operator.pos),
+    Operator(0, 0, '-', 1, 2305)(operator.neg),
     # Grouping
-    Operator('(', (lambda x: x), ')', None),
+    Operator(0, 0, '(', 1, ')'),
 ]
 
 
