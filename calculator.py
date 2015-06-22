@@ -24,6 +24,8 @@
     15
     >>> c('2^3*4+5*6')
     62
+    >>> c('2(5')
+    62
 
     >>> values = dict(a=1, b=2, c=3)
     >>> d = Calculator((int, float, values.get))
@@ -69,22 +71,28 @@ class Calculator(object):
         values = []
         finished = False
         token = get_token()
-        while token != stop and not finished:
-            for operator in self.iter_operators(token, len(values)):
-                if operator.trump < precedence: #outclassed
-                    finished = True
-                    break #x2
-                try:
-                    values = [operator.process(self.calculate, tokens, token, stop, *values)]
-                except Exception as err:
-                    pass
+        try:
+            while token != stop and not finished:
+                errs = list()
+                for operator in self.iter_operators(token, len(values)):
+                    if operator.trump < precedence: #outclassed
+                        finished = True
+                        break #x2
+                    try:
+                        if operator.token is None:
+                            tokens.push_token(token)
+                        values = [operator.process(self.calculate, tokens, token, stop, *values)]
+                    except Exception as err:
+                        errs.append(err)
+                        if operator.token is None:
+                            token = get_token()
+                    else:
+                        token = get_token()
+                        break
                 else:
-                    token = get_token()
-                    break
-            else:
-                finished = True
-
-        tokens.push_token(token)
+                    raise (Exception(*errs) if len(errs) != 1 else errs[0])
+        finally:
+            tokens.push_token(token)
         if values:
             return values[0]
         else:
@@ -110,16 +118,14 @@ _default_interpreters = (
 
 
 class Operator(object):
-    ADJACENT = object()
-
     def __init__(self, *precedences):
         if isinstance(precedences[0], str) or precedences[0] is None:
-            self.trump, self.precount, self.token = float("inf"), 0, precedences[0]
+            self.trump, self.token = float("inf"), precedences[0]
             self.precedences = precedences[1:]
         else:
             self.trump, self.token = precedences[:2]
-            self.precount = 1
             self.precedences = precedences[2:]
+        self.precount = (0,1)[self.trump < float("inf")]
         self.action = (lambda X: X)
 
     def __call__(self, action):
@@ -127,17 +133,21 @@ class Operator(object):
         return self
 
     def process(self, evaluate, tokens, token, stop, *args):
-        if self.token is None:
-            tokens.push_token(token)
         args = list(args)
         for precedence in self.precedences:
             if isinstance(precedence, str): #group
                 args.append(evaluate(tokens, precedence, 0))
                 end_token = tokens.get_token()
                 if end_token != precedence:
+                    tokens.push_token(end_token)
                     raise ValueError('Mismatched group: %s...%s != %s' % (self.token, end_token, precedence))
             elif callable(precedence): #interpreter
-                args.append(precedence(tokens.get_token()))
+                token = tokens.get_token()
+                try:
+                    args.append(precedence(token))
+                except Exception as err:
+                    tokens.push_token(token)
+                    raise
             else: #numeric precedence
                 args.append(evaluate(tokens, stop, precedence))
         return self.action(*args)
