@@ -48,7 +48,8 @@ import shlex
 class Calculator(object):
     def __init__(self, interpreters=None, operators=None, tokenize=shlex.shlex):
         self.interpreters = interpreters or _default_interpreters
-        operators = operators or _default_operators
+        operators = list(operators or _default_operators)
+        operators.append(Operator(None, self._interpret, None))
         self.operators = {(O.token, O.precount): O for O in operators}
         self.max_precount = max(O.precount for O in operators)
         self.tokenize = tokenize
@@ -57,11 +58,14 @@ class Calculator(object):
         return self.calculate(expression)
 
     def calculate(self, tokens, stop='', precedence=0):
-        if not hasattr(tokens, 'get_token'):
+        try:
+            get_token = tokens.get_token
+        except AttributeError:
             tokens = self.tokenize(tokens)
+            get_token = tokens.get_token
         values = list()
         while len(values) <= 1:
-            token = tokens.get_token()
+            token = get_token()
             if token == stop:
                 break
             for argcount in range(len(values), -1, -1):
@@ -72,8 +76,9 @@ class Calculator(object):
                     operator = self.operators[None, argcount]
                     break
             else:
-                values.append(self._interpret(token)) # TODO!
-                continue
+                raise Exception
+                #values.append(self._interpret(token)) # TODO!
+                #continue
 
             # Apply operator
             if operator.trump < precedence: #outclassed
@@ -116,7 +121,7 @@ class Operator(object):
     ADJACENT = object()
 
     def __init__(self, *precedences):
-        if isinstance(precedences[0], str):
+        if isinstance(precedences[0], str) or precedences[0] is None:
             self.trump, self.precount, self.token = float("inf"), 0, precedences[0]
             self.precedences = precedences[1:-1]
         else:
@@ -135,6 +140,8 @@ class Operator(object):
                 end_token = tokens.get_token()
                 if end_token != precedence:
                     raise ValueError('Mismatched group: %s...%s != %s' % (self.token, end_token, precedence))
+            elif callable(precedence):
+                args.append(precedence(tokens.get_token()))
             else:
                 args.append(evaluate(tokens, stop, precedence))
         return self.action(*args)
