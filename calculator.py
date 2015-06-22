@@ -73,13 +73,10 @@ class Calculator(object):
 
     def _eval(self, tokens, stop=(lambda X: not X), precedence=0, valuecount=1):
         values = list()
-        while len(values) <= self.max_precount:
+        while True:
             token = tokens.get_token()
             if stop(token):
-                tokens.push_token(token)
-                if len(values) == valuecount:
-                    return values
-                raise ValueError('Missing expected value {}'.format(token))
+                break
             for argcount in range(len(values), -1, -1):
                 if (token, argcount) in self.operators:
                     operator = self.operators[token, argcount]
@@ -89,17 +86,20 @@ class Calculator(object):
                     break
             else:
                 values.append(self._interpret(token)) # TODO!
-                operator = None
+                continue
 
-            if operator:
-                # Apply operator
-                if operator.trump and operator.trump <= precedence: #outclassed
-                    tokens.push_token(token)
-                    return values #TODO!
-                else:
-                    values = [operator.calculate(self._eval, tokens, token, stop, *values)]
+            # Apply operator
+            if operator.trump and operator.trump <= precedence: #outclassed
+                break
+            else:
+                args = values[-argcount:]
+                values = values[:-argcount] + [operator.calculate(self._eval, tokens, token, stop, *args)]
 
-        raise ValueError('No operator takes {} values: {}'.format(len(values), values))
+        tokens.push_token(token)
+        if len(values) == valuecount:
+            return values
+        else:
+            raise ValueError('No operator takes {} {} values: {}'.format(token, len(values), values))
 
 
 def _apply_or_mul(left, right):
