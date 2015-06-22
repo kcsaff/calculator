@@ -81,15 +81,15 @@ class Calculator(object):
                 if (token, argcount) in self.operators:
                     operator = self.operators[token, argcount]
                     break
-                elif (Operator.ADJACENT, argcount) in self.operators:
-                    operator = self.operators[Operator.ADJACENT, argcount]
+                elif (None, argcount) in self.operators:
+                    operator = self.operators[None, argcount]
                     break
             else:
                 values.append(self._interpret(token)) # TODO!
                 continue
 
             # Apply operator
-            if operator.trump and operator.trump <= precedence: #outclassed
+            if operator.trump < precedence: #outclassed
                 break
             else:
                 args = values[-argcount:]
@@ -117,9 +117,13 @@ _default_interpreters = (
 class Operator(object):
     ADJACENT = object()
 
-    def __init__(self, trump, precount, token, *parts):
-        self.trump, self.precount, self.token = trump, precount, token
-        self.parts = parts
+    def __init__(self, *parts):
+        if isinstance(parts[0], str):
+            self.trump, self.precount, self.token = float("inf"), 0, parts[0]
+            self.parts = parts[1:]
+        else:
+            self.trump, self.precount, self.token = parts[:3]
+            self.parts = parts[3:]
         self.action = (lambda X: X)
 
     def __call__(self, action):
@@ -127,7 +131,7 @@ class Operator(object):
         return self
 
     def calculate(self, evaluate, tokens, token, stop, *args):
-        if self.token is Operator.ADJACENT:
+        if self.token is None:
             tokens.push_token(token)
         args = list(args)
         for i in range(0, len(self.parts), 2):
@@ -158,16 +162,16 @@ _default_operators = [
     Operator(2190, 1, '*', 1, 2200)(operator.mul),
     Operator(2190, 1, '/', 1, 2200)(operator.truediv),
     Operator(2310, 1, '^', 1, 2300)(operator.pow),
-    Operator(2390, 1, Operator.ADJACENT, 1, 2400)(_apply_or_mul),
+    Operator(2390, 1, None, 1, 2400)(_apply_or_mul),
     # Call-like
     Operator(3000, 1, '[', 1, ']')(operator.getitem),
     # Postfix
     Operator(2295, 1, '%')(lambda x: x * 0.01),
     # Prefix
-    Operator(0, 0, '+', 1, 2305)(operator.pos),
-    Operator(0, 0, '-', 1, 2305)(operator.neg),
+    Operator('+', 1, 2305)(operator.pos),
+    Operator('-', 1, 2305)(operator.neg),
     # Grouping
-    Operator(0, 0, '(', 1, ')'),
+    Operator('(', 1, ')'),
 ]
 
 
