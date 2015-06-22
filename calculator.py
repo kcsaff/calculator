@@ -55,7 +55,6 @@ class Calculator(object):
             self.operators[operator.token, operator.precount].append(operator)
         for olist in self.operators.values():
             olist.sort(key=(lambda O: -O.trump))
-        self.max_precount = max(O.precount for O in operators)
         self.tokenize = tokenize
 
     def __call__(self, expression):
@@ -67,17 +66,16 @@ class Calculator(object):
         except AttributeError:
             tokens = self.tokenize(tokens)
             get_token = tokens.get_token
-        values = list()
+        values = []
         finished = False
         token = get_token()
-        while len(values) <= self.max_precount and token != stop and not finished:
+        while token != stop and not finished:
             for operator in self.iter_operators(token, len(values)):
                 if operator.trump < precedence: #outclassed
                     finished = True
                     break #x2
                 try:
-                    args = values[len(values)-operator.precount:]
-                    values = values[:len(values)-operator.precount] + [operator.process(self.calculate, tokens, token, stop, *args)]
+                    values = [operator.process(self.calculate, tokens, token, stop, *values)]
                 except Exception as err:
                     pass
                 else:
@@ -87,17 +85,16 @@ class Calculator(object):
                 finished = True
 
         tokens.push_token(token)
-        if len(values) == 1:
+        if values:
             return values[0]
         else:
-            raise ValueError('No operator takes {} {} values: {}'.format(token, len(values), values))
+            raise ValueError('No operator available')
 
     def iter_operators(self, token, valcount):
-        for argcount in range(valcount, -1, -1):
-            if (token, argcount) in self.operators:
-                yield from self.operators[token, argcount]
-            if (None, argcount) in self.operators:
-                yield from self.operators[None, argcount]
+        if (token, valcount) in self.operators:
+            yield from self.operators[token, valcount]
+        if (None, valcount) in self.operators:
+            yield from self.operators[None, valcount]
 
 
 def _apply_or_mul(left, right):
