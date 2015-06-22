@@ -47,10 +47,14 @@ import shlex
 
 class Calculator(object):
     def __init__(self, interpreters=None, operators=None, tokenize=shlex.shlex):
-        self.interpreters = interpreters or _default_interpreters
+        self.interpreters = list(interpreters or _default_interpreters)
         operators = list(operators or _default_operators)
-        operators.append(Operator(None, self._interpret, None))
-        self.operators = {(O.token, O.precount): O for O in operators}
+        operators.extend(Operator(None, I) for I in self.interpreters)
+        self.operators = {(O.token, O.precount): [] for O in operators}
+        for operator in operators:
+            self.operators[operator.token, operator.precount].append(operator)
+        for olist in self.operators.values():
+            olist.sort(key=(lambda O: -O.trump))
         self.max_precount = max(O.precount for O in operators)
         self.tokenize = tokenize
 
@@ -64,28 +68,23 @@ class Calculator(object):
             tokens = self.tokenize(tokens)
             get_token = tokens.get_token
         values = list()
-        while len(values) <= 1:
-            token = get_token()
-            if token == stop:
-                break
-            for argcount in range(len(values), -1, -1):
-                if (token, argcount) in self.operators:
-                    operator = self.operators[token, argcount]
-                    break
-                elif (None, argcount) in self.operators:
-                    operator = self.operators[None, argcount]
+        finished = False
+        token = get_token()
+        while len(values) <= self.max_precount and token != stop and not finished:
+            for operator in self.iter_operators(token, len(values)):
+                if operator.trump < precedence: #outclassed
+                    finished = True
+                    break #x2
+                try:
+                    args = values[len(values)-operator.precount:]
+                    values = values[:len(values)-operator.precount] + [operator.process(self.calculate, tokens, token, stop, *args)]
+                except Exception as err:
+                    pass
+                else:
+                    token = get_token()
                     break
             else:
-                raise Exception
-                #values.append(self._interpret(token)) # TODO!
-                #continue
-
-            # Apply operator
-            if operator.trump < precedence: #outclassed
-                break
-            else:
-                args = values[len(values)-operator.precount:]
-                values = values[:len(values)-operator.precount] + [operator.process(self.calculate, tokens, token, stop, *args)]
+                finished = True
 
         tokens.push_token(token)
         if len(values) == 1:
@@ -93,16 +92,12 @@ class Calculator(object):
         else:
             raise ValueError('No operator takes {} {} values: {}'.format(token, len(values), values))
 
-    def _interpret(self, token):
-        for interpreter in self.interpreters:
-            try:
-                value = interpreter(token)
-            except Exception as err:
-                pass
-            else:
-                return value
-        else:
-            raise ValueError('Could not interpret %r' % token)
+    def iter_operators(self, token, valcount):
+        for argcount in range(valcount, -1, -1):
+            if (token, argcount) in self.operators:
+                yield from self.operators[token, argcount]
+            if (None, argcount) in self.operators:
+                yield from self.operators[None, argcount]
 
 
 def _apply_or_mul(left, right):
@@ -123,12 +118,16 @@ class Operator(object):
     def __init__(self, *precedences):
         if isinstance(precedences[0], str) or precedences[0] is None:
             self.trump, self.precount, self.token = float("inf"), 0, precedences[0]
-            self.precedences = precedences[1:-1]
+            self.precedences = precedences[1:]
         else:
             self.trump, self.token = precedences[:2]
             self.precount = 1
-            self.precedences = precedences[2:-1]
-        self.action = precedences[-1] or (lambda X: X)
+            self.precedences = precedences[2:]
+        self.action = (lambda X: X)
+
+    def __call__(self, action):
+        self.action = action
+        return self
 
     def process(self, evaluate, tokens, token, stop, *args):
         if self.token is None:
@@ -140,36 +139,36 @@ class Operator(object):
                 end_token = tokens.get_token()
                 if end_token != precedence:
                     raise ValueError('Mismatched group: %s...%s != %s' % (self.token, end_token, precedence))
-            elif callable(precedence):
+            elif callable(precedence): #interpreter
                 args.append(precedence(tokens.get_token()))
-            else:
+            else: #numeric precedence
                 args.append(evaluate(tokens, stop, precedence))
         return self.action(*args)
 
 
 _default_operators = [
-    Operator(510, '=', 500, lambda L,R: L.assign(R)),
-    Operator(1090, '==', 1100, operator.eq),
-    Operator(1090, '<=', 1100, operator.le),
-    Operator(1090, '>=', 1100, operator.ge),
-    Operator(1090, '!=', 1100, operator.ne),
-    Operator(1090, '<', 1100, operator.lt),
-    Operator(1090, '>', 1100, operator.gt),
-    Operator(2090, '+', 2100, operator.add),
-    Operator(2090, '-', 2100, operator.sub),
-    Operator(2190, '*', 2200, operator.mul),
-    Operator(2190, '/', 2200, operator.truediv),
-    Operator(2310, '^', 2300, operator.pow),
-    Operator(2390, None, 2400, _apply_or_mul),
+    Operator(510, '=', 500)(lambda L,R: L.assign(R)),
+    Operator(1090, '==', 1100)(operator.eq),
+    Operator(1090, '<=', 1100)(operator.le),
+    Operator(1090, '>=', 1100)(operator.ge),
+    Operator(1090, '!=', 1100)(operator.ne),
+    Operator(1090, '<', 1100)(operator.lt),
+    Operator(1090, '>', 1100)(operator.gt),
+    Operator(2090, '+', 2100)(operator.add),
+    Operator(2090, '-', 2100)(operator.sub),
+    Operator(2190, '*', 2200)(operator.mul),
+    Operator(2190, '/', 2200)(operator.truediv),
+    Operator(2310, '^', 2300)(operator.pow),
+    Operator(2390, None, 2400)(_apply_or_mul),
     # Call-like
-    Operator(3000, '[', ']', operator.getitem),
+    Operator(3000, '[', ']')(operator.getitem),
     # Postfix
-    Operator(2295, '%', lambda x: x * 0.01),
+    Operator(2295, '%')(lambda x: x * 0.01),
     # Prefix
-    Operator('+', 2305, operator.pos),
-    Operator('-', 2305, operator.neg),
+    Operator('+', 2305)(operator.pos),
+    Operator('-', 2305)(operator.neg),
     # Grouping
-    Operator('(', ')', None),
+    Operator('(', ')'),
 ]
 
 
